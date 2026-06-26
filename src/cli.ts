@@ -1,7 +1,7 @@
 #!/usr/bin/env -S tsx
 import { Command } from "commander";
 import { loadEnv } from "./env.js";
-import { parsePrRef, runDirFor, ensureRunDirs, type PrRef } from "./paths.js";
+import { parsePrRef, runDirFor, runPaths, ensureRunDirs, type PrRef } from "./paths.js";
 import {
   readManifest,
   writeManifest,
@@ -35,6 +35,29 @@ async function loadRun(
   return { runDir, manifest };
 }
 
+/**
+ * The `init` step: resolve the preview URL and persist it on the run's manifest
+ * (creating the run if needed). Returns the resolved URL. Shared by the
+ * init/resolve commands and the one-shot `make` command.
+ */
+async function seedPreviewUrl(ref: PrRef, previewUrl?: string): Promise<string> {
+  const runDir = runDirFor(ref);
+  await ensureRunDirs(runDir);
+  const url = await resolvePreviewUrl(ref, previewUrl);
+  const existing = await readManifest(runDir).catch(() => null);
+  const manifest: Manifest = existing
+    ? { ...existing, previewUrl: url }
+    : {
+        repo: ref.repo,
+        prNumber: ref.prNumber,
+        previewUrl: url,
+        createdAt: new Date().toISOString(),
+        highlights: [],
+      };
+  await writeManifest(runDir, manifest);
+  return url;
+}
+
 // --- init: create the run from a PR URL + a preview URL ------------------------
 // The core system is repo-agnostic: its initial input is just (PR ref, preview URL).
 // --preview-url is the primary, first-class input. If omitted, an OPTIONAL
@@ -54,8 +77,6 @@ const resolveCmd = withPr(program.command("resolve", { hidden: true }))
 for (const cmd of [initCmd, resolveCmd]) {
   cmd.action(async (pr: string, opts: { repo?: string; previewUrl?: string; autoResolve?: boolean }) => {
     const ref = parsePrRef(pr, opts.repo);
-    const runDir = runDirFor(ref);
-    await ensureRunDirs(runDir);
 
     if (!opts.previewUrl && !opts.autoResolve) {
       throw new Error(
@@ -65,21 +86,9 @@ for (const cmd of [initCmd, resolveCmd]) {
     if (!opts.previewUrl) {
       console.error(`Resolving preview URL for ${ref.repo}#${ref.prNumber}...`);
     }
-    const url = await resolvePreviewUrl(ref, opts.previewUrl);
-
-    const existing = await readManifest(runDir).catch(() => null);
-    const manifest: Manifest = existing
-      ? { ...existing, previewUrl: url }
-      : {
-          repo: ref.repo,
-          prNumber: ref.prNumber,
-          previewUrl: url,
-          createdAt: new Date().toISOString(),
-          highlights: [],
-        };
-    await writeManifest(runDir, manifest);
+    const url = await seedPreviewUrl(ref, opts.previewUrl);
     console.error(`Preview URL: ${url}`);
-    console.error(`Run dir:     ${runDir}`);
+    console.error(`Run dir:     ${runDirFor(ref)}`);
   });
 }
 
@@ -131,6 +140,42 @@ stage(
 stage("render", "Render the Remotion composition to out.mp4", () =>
   import("./pipeline/render.js"),
 );
+
+// --- make: one command, PR -> out.mp4, no gates --------------------------------
+// Chains every stage in order. The review gates (edit story.json, inspect specs)
+// are intentionally skipped — use the individual staged commands above when you
+// need to inspect or hand-edit a single step.
+const PIPELINE: { name: string; load: () => Promise<{ run: StageRunner }> }[] = [
+  { name: "script", load: () => import("./pipeline/story.js") },
+  { name: "probe", load: () => import("./pipeline/probe.js") },
+  { name: "author", load: () => import("./pipeline/author.js") },
+  { name: "record", load: () => import("./pipeline/record.js") },
+  { name: "normalize", load: () => import("./pipeline/normalize.js") },
+  { name: "voice", load: () => import("./pipeline/voice.js") },
+  { name: "render", load: () => import("./pipeline/render.js") },
+];
+
+withPr(program.command("make"))
+  .description("Run the full pipeline end-to-end (no gates): PR -> out.mp4")
+  .requiredOption("--preview-url <url>", "the app's deployed preview URL to demo against")
+  .option("--max <n>", "max number of highlights to generate")
+  .action(async (pr: string, opts: { repo?: string; previewUrl: string; max?: string }) => {
+    const ref = parsePrRef(pr, opts.repo);
+    const runDir = runDirFor(ref);
+
+    const url = await seedPreviewUrl(ref, opts.previewUrl);
+    console.error(`Preview URL: ${url}`);
+    console.error(`Run dir:     ${runDir}\n`);
+
+    // Every stage reads/writes the manifest; --max is only read by `script`.
+    const stageOpts: Record<string, unknown> = { repo: opts.repo, max: opts.max };
+    for (const [i, s] of PIPELINE.entries()) {
+      console.error(`=== [${i + 1}/${PIPELINE.length}] ${s.name} ===`);
+      const mod = await s.load();
+      await mod.run(ref, stageOpts);
+    }
+    console.error(`\nDone -> ${runPaths(runDir).outMp4}`);
+  });
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   console.error(`\nerror: ${err instanceof Error ? err.message : String(err)}`);

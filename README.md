@@ -28,6 +28,19 @@ cp .env.example .env   # then fill in the keys
 Optional: `ELEVENLABS_VOICE_ID` / `ELEVENLABS_VOICE_NAME` (defaults to Will),
 `FFMPEG_PATH`.
 
+## One-shot
+
+The simplest path — one command, PR + preview URL in, `out.mp4` out, no gates:
+
+```bash
+yarn pr-video make https://github.com/owner/name/pull/123 --preview-url https://preview.example.app
+#   -> runs/<owner>-<name>-pr<N>/out.mp4
+```
+
+`make` chains every stage below in order and skips the review gates (it does not
+stop for you to edit `story.json` or inspect the specs). Use the individual
+staged commands when you want to inspect or hand-edit a single step.
+
 ## Pipeline (CLI, with manual gates)
 
 Every run lives in `runs/<owner>-<name>-pr<N>/`, coordinated by `manifest.json`.

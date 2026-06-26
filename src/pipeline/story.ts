@@ -128,7 +128,7 @@ export async function run(ref: PrRef, opts: Record<string, unknown>): Promise<vo
     console.error(`    narration: ${h.narration}`);
   }
   console.error(
-    `\nGATE: review/edit ${p.storyJson} (check facts AND the narrator voice), then \`pr-video script --from-story\`.`,
+    `\nGATE: review/edit ${p.storyJson} (check facts AND the narrator voice), then re-seed the manifest with:\n  pr-video script ${ref.repo}#${ref.prNumber} --from-story`,
   );
 }
 
