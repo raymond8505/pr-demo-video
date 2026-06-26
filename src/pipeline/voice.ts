@@ -10,8 +10,9 @@ import { readManifest, updateHighlight } from "../manifest.js";
 import { mediaDurationSec } from "../media.js";
 
 // The narrator. Overridable via ELEVENLABS_VOICE_ID (exact id) or
-// ELEVENLABS_VOICE_NAME (resolved by search); defaults to Spuds Oxley.
-const DEFAULT_VOICE_NAME = "Spuds Oxley";
+// ELEVENLABS_VOICE_NAME (resolved by search); defaults to Will (an upbeat,
+// young American premade voice that fits the product-evangelist persona).
+const DEFAULT_VOICE_NAME = "Will";
 const TTS_MODEL = "eleven_multilingual_v2";
 const OUTPUT_FORMAT = "mp3_44100_128";
 
@@ -59,7 +60,7 @@ export async function run(ref: PrRef, opts: Record<string, unknown>): Promise<vo
 
 /**
  * Resolve the narrator voice id: explicit ELEVENLABS_VOICE_ID wins; otherwise
- * search the account/library for the configured name (Spuds Oxley by default).
+ * search the account/library for the configured name (Will by default).
  */
 async function resolveVoiceId(
   client: ElevenLabsClient,

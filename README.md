@@ -8,7 +8,7 @@ PR + preview URL
   → story (Claude reads the PR, writes a release-note "story")
   → Playwright specs (an agent authors one demo per highlight against the live app)
   → clips (run the specs, record one video per highlight)
-  → voiceover (ElevenLabs narrates each highlight — Spuds Oxley)
+  → voiceover (ElevenLabs narrates each highlight — Max, an upbeat product evangelist)
   → out.mp4 (Remotion stitches clips + voiceover, synced, with captions + transitions)
 ```
 
@@ -25,7 +25,7 @@ cp .env.example .env   # then fill in the keys
 ```
 
 `.env` keys: `GITHUB_TOKEN` (repo read), `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`.
-Optional: `ELEVENLABS_VOICE_ID` / `ELEVENLABS_VOICE_NAME` (defaults to Spuds Oxley),
+Optional: `ELEVENLABS_VOICE_ID` / `ELEVENLABS_VOICE_NAME` (defaults to Will),
 `FFMPEG_PATH`.
 
 ## Pipeline (CLI, with manual gates)

@@ -34,7 +34,7 @@ const ExtractSchema = z.object({
   ),
 });
 
-/** Stage 2 (Spuds Oxley): narration only, rewritten from one plainSummary. */
+/** Stage 2 (narrator): narration only, rewritten from one plainSummary. */
 const NarrationSchema = z.object({ narration: z.string() });
 
 /** What story.json holds and what --from-story re-seeds from. */
@@ -104,13 +104,13 @@ export async function run(ref: PrRef, opts: Record<string, unknown>): Promise<vo
   });
   const factual = extracted.highlights.slice(0, maxHighlights);
 
-  // Stage 2: Spuds Oxley narration, one call per highlight (keeps the voice tight).
-  console.error(`Stage 2: writing Spuds Oxley narration for ${factual.length} highlight(s)...`);
+  // Stage 2: narrator persona, one call per highlight (keeps the voice tight).
+  console.error(`Stage 2: writing narration for ${factual.length} highlight(s)...`);
   const highlights: StoryHighlight[] = [];
   for (const h of factual) {
     const { narration } = await provider.complete({
-      system: SPUDS_SYSTEM,
-      messages: [{ role: "user", content: spudsPrompt(h.title, h.plainSummary) }],
+      system: NARRATOR_SYSTEM,
+      messages: [{ role: "user", content: narratorPrompt(h.title, h.plainSummary) }],
       schema: NarrationSchema,
       schemaName: "narration",
       maxTokens: 1000,
@@ -125,10 +125,10 @@ export async function run(ref: PrRef, opts: Record<string, unknown>): Promise<vo
   for (const h of highlights) {
     console.error(`  [${h.type}] ${h.title}`);
     console.error(`    fact: ${h.plainSummary}`);
-    console.error(`    spuds: ${h.narration}`);
+    console.error(`    narration: ${h.narration}`);
   }
   console.error(
-    `\nGATE: review/edit ${p.storyJson} (check facts AND the Spuds voice), then \`pr-video script --from-story\`.`,
+    `\nGATE: review/edit ${p.storyJson} (check facts AND the narrator voice), then \`pr-video script --from-story\`.`,
   );
 }
 
@@ -171,32 +171,32 @@ ${diff}
 Return at most ${max} highlights, ordered by customer impact (most important first).`;
 }
 
-// --- Stage 2 (Spuds Oxley) ----------------------------------------------------
-const SPUDS_SYSTEM = `You are Spuds Oxley, an old-timey storyteller — a warm, unhurried raconteur from a bygone age of front-porch yarns and crackling radio broadcasts. You narrate short demonstrations of a software product's newest changes, turning each plain feature into a small delight a listener will remember.
+// --- Stage 2 (narrator) -------------------------------------------------------
+const NARRATOR_SYSTEM = `You are Max, an upbeat product evangelist who loves teaching people about the app's newest updates. You narrate short demonstrations of a software product's latest changes, turning each new feature into a clear, exciting moment a viewer instantly "gets."
 
 Voice and manner:
-- Folksy, warm, plainspoken. Greet the listener kindly ("Well now, friend...").
-- Gentle tall-tale wonder — a touch of harmless hyperbole, a fondness for modern marvels.
-- Early-twentieth-century Americana diction. No modern slang, no jargon, no brand-speak.
-- An unhurried cadence that reads aloud beautifully.
+- Warm, energetic, genuinely excited — the enthusiasm of someone who can't wait to show you what's new.
+- Clear and educational: say what the feature does and why it helps, in plain language.
+- Friendly and direct, like a great demo host. Modern and conversational, but professional — no slang overload, no hype-y buzzwords or marketing fluff.
+- A brisk, lively cadence that reads aloud naturally.
 
 Iron rules:
-- Tell the TRUTH about what the feature does. Embellish the DELIVERY, never the FACTS. If you are unsure of a detail, say it plain rather than invent.
+- Tell the TRUTH about what the feature does. Make it engaging, never inaccurate. If you are unsure of a detail, say it plain rather than invent.
 - No code, no file names, no version numbers, no emoji, no markup, no special characters — every word here is spoken aloud.
 - 2 to 3 sentences. Aim for about ${TARGET_SECONDS} seconds spoken (about ${TARGET_WORDS} words).
-- Present tense; speak to the listener directly.
+- Present tense; speak to the viewer directly.
 
 Example —
 Plain feature: "You can now search recipes by typing in the search bar; results filter as you type."
-Spuds Oxley: "Well now, friend, huntin' down supper used to mean thumbin' through the whole blessed cookbook. No more. Just whisper what you're cravin' into that little search box, and watch the recipes come a-runnin' right to ya."
+Max: "Here's something you'll love — finding a recipe is now instant. Just start typing in the search bar and the list filters as you go, so your next meal is only a few keystrokes away."
 
 You receive a plain description of ONE user-facing change. Return narration in your voice that a customer would both enjoy and clearly understand.`;
 
-function spudsPrompt(title: string, plainSummary: string): string {
+function narratorPrompt(title: string, plainSummary: string): string {
   return `Feature: ${title}
 Plain description: ${plainSummary}
 
-Write the Spuds Oxley narration for this one change.`;
+Write the narration for this one change.`;
 }
 
 // --- manifest seeding ---------------------------------------------------------
