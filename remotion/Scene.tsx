@@ -1,5 +1,6 @@
-import { AbsoluteFill, OffthreadVideo, Audio, staticFile } from "remotion";
+import { AbsoluteFill, OffthreadVideo, Audio, Sequence, staticFile } from "remotion";
 import type { SceneInput } from "./types.js";
+import { voOffsetFrames } from "./types.js";
 
 const TYPE_LABEL: Record<SceneInput["type"], string> = {
   feature: "NEW",
@@ -14,16 +15,22 @@ const TYPE_COLOR: Record<SceneInput["type"], string> = {
 };
 
 /**
- * One highlight: the demo clip fills the frame; the voiceover plays over it; a
- * lower-third caption shows the title + change type. The enclosing Sequence
- * (in DemoVideo) sets the scene length, so a clip shorter than the voice freezes
- * on its last frame and a longer clip is truncated — no per-clip trimming here.
+ * One highlight: the demo clip fills the frame; the voiceover plays over it
+ * (optionally delayed by voOffsetSec so it lands on the payoff, not the
+ * navigation preamble); a lower-third caption shows the title + change type. The
+ * enclosing Sequence (in DemoVideo) sets the scene length from sceneFrames(),
+ * which spans both the full clip and the delayed voice — so the clip is never
+ * truncated and a voice that runs long freezes on the clip's last frame.
  */
 export const Scene: React.FC<{ scene: SceneInput }> = ({ scene }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: "#0b0b0f" }}>
       <OffthreadVideo src={staticFile(scene.clipSrc)} muted />
-      {scene.voSrc ? <Audio src={staticFile(scene.voSrc)} /> : null}
+      {scene.voSrc ? (
+        <Sequence from={voOffsetFrames(scene)}>
+          <Audio src={staticFile(scene.voSrc)} />
+        </Sequence>
+      ) : null}
 
       <AbsoluteFill
         style={{

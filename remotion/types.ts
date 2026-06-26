@@ -18,6 +18,11 @@ export type SceneInput = {
   /** relative path under the run dir, e.g. "audio/<id>.mp3" (optional pre-VO) */
   voSrc?: string;
   voDurationSec?: number;
+  /**
+   * Seconds to delay the voiceover after the scene starts, so narration lands on
+   * the on-screen payoff instead of the navigation preamble. Defaults to 0 (VO
+   * starts with the clip). Set per-highlight at the render gate. */
+  voOffsetSec?: number;
 };
 
 export type DemoVideoProps = {
@@ -34,11 +39,25 @@ export const TRANSITION_FRAMES = 15;
 export const SCENE_PAD_SEC = 0.6;
 
 /**
- * Source-of-truth timing: the voiceover drives scene length when present, else
- * the clip length. Returns whole frames (>= 1) for one scene.
+ * Frames to delay the voiceover within its scene (>= 0). The VO is offset so its
+ * content lands on the on-screen payoff rather than the navigation preamble.
+ */
+export function voOffsetFrames(scene: SceneInput): number {
+  return Math.max(0, Math.round((scene.voOffsetSec ?? 0) * FPS));
+}
+
+/**
+ * Source-of-truth timing: the scene is long enough to play the whole clip AND
+ * the (possibly delayed) voiceover. Whichever ends later sets the length, so a
+ * clip longer than the voice is never truncated and a voice that runs past the
+ * clip freezes on its last frame. Returns whole frames (>= 1) for one scene.
  */
 export function sceneFrames(scene: SceneInput): number {
-  const base = scene.voDurationSec ?? scene.clipDurationSec;
+  const voEnd =
+    scene.voDurationSec != null
+      ? (scene.voOffsetSec ?? 0) + scene.voDurationSec
+      : 0;
+  const base = Math.max(scene.clipDurationSec, voEnd);
   return Math.max(1, Math.ceil((base + SCENE_PAD_SEC) * FPS));
 }
 

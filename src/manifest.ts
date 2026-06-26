@@ -54,6 +54,9 @@ export const ManifestHighlightSchema = StoryHighlightSchema.extend({
   clipDurationSec: z.number().positive().optional(),
   voPath: z.string().optional(),
   voDurationSec: z.number().positive().optional(),
+  /** Seconds to delay the voiceover so it lands on the on-screen payoff rather
+   * than the navigation preamble. Set at the render gate; defaults to 0. */
+  voOffsetSec: z.number().nonnegative().optional(),
   unresolvedReason: z.string().optional(),
 });
 export type ManifestHighlight = z.infer<typeof ManifestHighlightSchema>;

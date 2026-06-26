@@ -26,7 +26,11 @@ export async function run(ref: PrRef, _opts: Record<string, unknown>): Promise<v
       clipSrc: `clips/${h.id}.mp4`,
       clipDurationSec: h.clipDurationSec as number,
       ...(h.voPath && h.voDurationSec
-        ? { voSrc: `audio/${h.id}.mp3`, voDurationSec: h.voDurationSec }
+        ? {
+            voSrc: `audio/${h.id}.mp3`,
+            voDurationSec: h.voDurationSec,
+            ...(h.voOffsetSec != null ? { voOffsetSec: h.voOffsetSec } : {}),
+          }
         : {}),
     }));
 
