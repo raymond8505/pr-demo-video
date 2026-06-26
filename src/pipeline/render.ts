@@ -3,7 +3,8 @@ import { bundle } from "@remotion/bundler";
 import { selectComposition, renderMedia } from "@remotion/renderer";
 import type { PrRef } from "../paths.js";
 import { runDirFor, runPaths, PROJECT_ROOT } from "../paths.js";
-import { readManifest } from "../manifest.js";
+import { readManifest, highlightNarration } from "../manifest.js";
+import { placeBeats } from "./placeBeats.js";
 import type { DemoVideoProps, SceneInput } from "../../remotion/types.js";
 
 /**
@@ -22,16 +23,10 @@ export async function run(ref: PrRef, _opts: Record<string, unknown>): Promise<v
       id: h.id,
       type: h.type,
       title: h.title,
-      narration: h.narration,
+      narration: highlightNarration(h),
       clipSrc: `clips/${h.id}.mp4`,
       clipDurationSec: h.clipDurationSec as number,
-      ...(h.voPath && h.voDurationSec
-        ? {
-            voSrc: `audio/${h.id}.mp3`,
-            voDurationSec: h.voDurationSec,
-            ...(h.voOffsetSec != null ? { voOffsetSec: h.voOffsetSec } : {}),
-          }
-        : {}),
+      vo: placeBeats(h.id, h.beats),
     }));
 
   if (scenes.length === 0) {

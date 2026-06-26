@@ -3,7 +3,12 @@ import path from "node:path";
 import { z } from "zod/v4";
 import type { PrRef } from "../paths.js";
 import { runDirFor, runPaths, ensureRunDirs, PROJECT_ROOT } from "../paths.js";
-import { readManifest, updateHighlight, type ManifestHighlight } from "../manifest.js";
+import {
+  readManifest,
+  updateHighlight,
+  highlightNarration,
+  type ManifestHighlight,
+} from "../manifest.js";
 import { ariaSnapshotOf, capSnapshot } from "../browser.js";
 import { capture } from "../proc.js";
 import { getProvider, type LlmProvider, type LlmMessage } from "../llm/provider.js";
@@ -134,11 +139,14 @@ async function authorOne(
 
 const SYSTEM = `You author a single Playwright test that visually demonstrates one product change on a live web app, for a screen-recorded demo video.
 
+The demo is broken into ordered BEATS — each beat is one on-screen action with its own spoken line that plays the moment that action happens. Your spec performs the beats in order and emits a marker at the start of each so the voiceover can be synced to it.
+
 Hard requirements for the spec you emit (in \`specCode\`):
 - Vanilla Playwright: \`import { test, expect } from "@playwright/test";\`. Exactly ONE \`test(...)\` per file.
 - Navigate with the configured baseURL: \`await page.goto("/")\` (and relative paths). Never hardcode a host.
 - The app has NO data-testids. Use accessible selectors only: getByRole, getByText, getByPlaceholder, getByLabel — chosen from the ARIA snapshot you are given.
-- After each meaningful UI transition, assert visibility with \`await expect(locator).toBeVisible()\` AND add \`await page.waitForTimeout(800)\` so the camera lingers and the recording reads well.
+- Perform the beats IN ORDER. Immediately BEFORE the visible action of each beat, emit its marker on its own line: \`console.log("@@PRVIDEO_BEAT <key>");\` using the beat's key. Emit exactly one marker per beat, in order — these are the ONLY console.log calls allowed.
+- After each beat's action, assert visibility with \`await expect(locator).toBeVisible()\` AND add \`await page.waitForTimeout(800)\` so the camera lingers and the recording reads well.
 - The test must actually perform the demoIntent flow on screen — open the right page, interact, and show the result.
 - Aim for a runtime close to expectedDurationSec so the clip roughly matches the voiceover length.
 - Prefer .first() when a role/text query could match multiple elements, to avoid strict-mode violations.
@@ -146,13 +154,21 @@ Hard requirements for the spec you emit (in \`specCode\`):
 Return specCode (the full file), selectorsUsed (the locators you chose), expectedDurationSec, and optional notes.`;
 
 function firstPrompt(h: ManifestHighlight, snapshot: string): string {
+  const beatList = h.beats
+    .map(
+      (b, i) =>
+        `  ${i + 1}. key="${b.key}" — action: ${b.action}\n     spoken line (plays as this action happens): "${b.narration}"`,
+    )
+    .join("\n");
   return `Highlight to demonstrate:
 - type: ${h.type}
 - title: ${h.title}
-- narration (the voiceover this clip plays under): ${h.narration}
-- demoIntent (the flow to perform): ${h.demoIntent}
+- demoIntent (the overall flow to perform): ${h.demoIntent}
 
-The voiceover is roughly ${estimateNarrationSec(h.narration)}s, so target that runtime.
+Beats — perform these in order, emitting \`console.log("@@PRVIDEO_BEAT <key>")\` just before each beat's visible action:
+${beatList}
+
+The full voiceover is roughly ${estimateNarrationSec(highlightNarration(h))}s, so target that runtime across all beats.
 
 ARIA snapshot of the app's landing page (your selector source of truth):
 \`\`\`yaml

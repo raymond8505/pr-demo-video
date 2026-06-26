@@ -1,10 +1,9 @@
 import { promises as fs, createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline as streamPipeline } from "node:stream/promises";
-import path from "node:path";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import type { PrRef } from "../paths.js";
-import { runDirFor, runPaths } from "../paths.js";
+import { runDirFor, beatAudioDir, beatAudioFile } from "../paths.js";
 import { loadEnv, requireEnv } from "../env.js";
 import { readManifest, updateHighlight } from "../manifest.js";
 import { mediaDurationSec } from "../media.js";
@@ -17,14 +16,14 @@ const TTS_MODEL = "eleven_multilingual_v2";
 const OUTPUT_FORMAT = "mp3_44100_128";
 
 /**
- * Generate one voiceover mp3 per highlight narration and record its duration —
- * the voiceover duration is the source of truth for scene length at render time.
+ * Generate one voiceover mp3 per BEAT and record each duration — the beat
+ * durations and their captured markers are the source of truth for where each
+ * spoken line lands (and for scene length) at render time.
  */
 export async function run(ref: PrRef, opts: Record<string, unknown>): Promise<void> {
   loadEnv();
   const apiKey = requireEnv("ELEVENLABS_API_KEY");
   const runDir = runDirFor(ref);
-  const p = runPaths(runDir);
   const manifest = await readManifest(runDir);
 
   const client = new ElevenLabsClient({ apiKey });
@@ -33,29 +32,38 @@ export async function run(ref: PrRef, opts: Record<string, unknown>): Promise<vo
   const todo = manifest.highlights.filter((h) => h.status !== "unresolved");
   if (todo.length === 0) throw new Error("No highlights to voice.");
 
+  let beatCount = 0;
   for (const h of todo) {
-    const mp3 = path.join(p.audio, `${h.id}.mp3`);
-    console.error(`voice ${h.id}: "${h.narration.slice(0, 60)}..."`);
-    const audio = await client.textToSpeech.convert(voiceId, {
-      text: h.narration,
-      modelId: TTS_MODEL,
-      outputFormat: OUTPUT_FORMAT,
-    });
-    // convert() resolves to a web ReadableStream; pipe it to disk.
-    await streamPipeline(
-      Readable.fromWeb(audio as unknown as Parameters<typeof Readable.fromWeb>[0]),
-      createWriteStream(mp3),
-    );
+    await fs.mkdir(beatAudioDir(runDir, h.id), { recursive: true });
+    // Mutate copies of the beats with their vo paths/durations, then persist.
+    const beats = h.beats.map((b) => ({ ...b }));
+    for (const beat of beats) {
+      const mp3 = beatAudioFile(runDir, h.id, beat.key);
+      console.error(`voice ${h.id}/${beat.key}: "${beat.narration.slice(0, 50)}..."`);
+      const audio = await client.textToSpeech.convert(voiceId, {
+        text: beat.narration,
+        modelId: TTS_MODEL,
+        outputFormat: OUTPUT_FORMAT,
+      });
+      // convert() resolves to a web ReadableStream; pipe it to disk.
+      await streamPipeline(
+        Readable.fromWeb(audio as unknown as Parameters<typeof Readable.fromWeb>[0]),
+        createWriteStream(mp3),
+      );
 
-    const voDurationSec = await mediaDurationSec(mp3);
+      beat.voPath = mp3;
+      beat.voDurationSec = await mediaDurationSec(mp3);
+      beatCount++;
+      console.error(`  ${h.id}/${beat.key}: ${beat.voDurationSec.toFixed(2)}s`);
+    }
     await updateHighlight(runDir, h.id, {
-      voPath: mp3,
-      voDurationSec,
+      beats,
       status: h.status === "normalized" ? "voiced" : h.status,
     });
-    console.error(`  ${h.id}: ${voDurationSec.toFixed(2)}s`);
   }
-  console.error(`Voiced ${todo.length} highlight(s) with voice ${voiceId}.`);
+  console.error(
+    `Voiced ${beatCount} beat(s) across ${todo.length} highlight(s) with voice ${voiceId}.`,
+  );
 }
 
 /**

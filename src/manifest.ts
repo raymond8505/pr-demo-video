@@ -12,9 +12,40 @@ export const HIGHLIGHT_TYPES = ["feature", "change", "fix"] as const;
 export type HighlightType = (typeof HIGHLIGHT_TYPES)[number];
 
 /**
+ * One beat: a single on-screen action and the spoken line that plays over it.
+ * Beats are the sync unit — the demo spec emits a marker per beat, the voice
+ * stage renders one mp3 per beat, and render drops each line where its action
+ * actually happened (`markerSec`).
+ */
+export const BeatSchema = z.object({
+  /** Stable, kebab key (assigned locally as b1, b2, …). Used as the spec's
+   * marker payload (`@@PRVIDEO_BEAT <key>`) and the audio filename. */
+  key: z.string().regex(/^[a-z0-9-]+$/, "beat key must be kebab-case"),
+  /** Factual on-screen step (stage 1): what the spec performs and marks. */
+  action: z.string().min(1),
+  /** In-character spoken line for this beat (stage 2). */
+  narration: z.string().min(1),
+  /** Per-beat voiceover, filled by the voice stage. */
+  voPath: z.string().optional(),
+  voDurationSec: z.number().positive().optional(),
+  /** When this beat's action occurred in the clip, relative to test start;
+   * filled at record from clips/<id>.beats.json. Absent → sequential fallback. */
+  markerSec: z.number().nonnegative().optional(),
+  /** Optional nudge (seconds, may be negative) applied on top of markerSec at
+   * the render gate to fine-tune where the line lands. */
+  voOffsetSec: z.number().optional(),
+});
+export type Beat = z.infer<typeof BeatSchema>;
+
+/** Join a highlight's beat lines into one narration string (logging/captions). */
+export function highlightNarration(h: { beats: Beat[] }): string {
+  return h.beats.map((b) => b.narration.trim()).join(" ");
+}
+
+/**
  * The shape the story-generation LLM call must return. Kept deliberately small:
- * `narration` is the spoken voiceover (capped to a few sentences) and
- * `demoIntent` is the UI flow that proves the change on screen.
+ * `beats` carries the ordered (action, spoken line) pairs and `demoIntent` is
+ * the overall UI flow that proves the change on screen.
  */
 export const StoryHighlightSchema = z.object({
   id: z
@@ -25,7 +56,7 @@ export const StoryHighlightSchema = z.object({
   /** Neutral, factual description of the change (stage 1) — shown at the gate
    * so accuracy can be reviewed separately from the in-character narration. */
   plainSummary: z.string().optional(),
-  narration: z.string().min(1),
+  beats: z.array(BeatSchema).min(1),
   demoIntent: z.string().min(1),
 });
 export type StoryHighlight = z.infer<typeof StoryHighlightSchema>;
@@ -52,11 +83,6 @@ export const ManifestHighlightSchema = StoryHighlightSchema.extend({
   clipWebmPath: z.string().optional(),
   clipMp4Path: z.string().optional(),
   clipDurationSec: z.number().positive().optional(),
-  voPath: z.string().optional(),
-  voDurationSec: z.number().positive().optional(),
-  /** Seconds to delay the voiceover so it lands on the on-screen payoff rather
-   * than the navigation preamble. Set at the render gate; defaults to 0. */
-  voOffsetSec: z.number().nonnegative().optional(),
   unresolvedReason: z.string().optional(),
 });
 export type ManifestHighlight = z.infer<typeof ManifestHighlightSchema>;

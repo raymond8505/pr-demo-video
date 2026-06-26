@@ -4,10 +4,17 @@ import {
   SCENE_PAD_SEC,
   TRANSITION_FRAMES,
   sceneFrames,
-  voOffsetFrames,
+  voBeatStartFrames,
+  voEndSec,
   totalFrames,
   type SceneInput,
+  type VoBeat,
 } from "./types.js";
+
+/** A spoken beat with sensible defaults. */
+function beat(over: Partial<VoBeat> = {}): VoBeat {
+  return { src: "audio/h1/b1.mp3", startSec: 0, durationSec: 3, ...over };
+}
 
 /** A scene with sensible defaults; override per case. */
 function scene(over: Partial<SceneInput> = {}): SceneInput {
@@ -18,70 +25,81 @@ function scene(over: Partial<SceneInput> = {}): SceneInput {
     narration: "n",
     clipSrc: "clips/h1.mp4",
     clipDurationSec: 10,
+    vo: [],
     ...over,
   };
 }
 
 const frames = (sec: number) => Math.ceil((sec + SCENE_PAD_SEC) * FPS);
 
-describe("voOffsetFrames", () => {
-  it("defaults to 0 when no offset is set", () => {
-    expect(voOffsetFrames(scene())).toBe(0);
+describe("voBeatStartFrames", () => {
+  it("is 0 when the beat starts at the scene start", () => {
+    expect(voBeatStartFrames(beat({ startSec: 0 }))).toBe(0);
   });
 
   it("converts seconds to whole frames", () => {
-    expect(voOffsetFrames(scene({ voOffsetSec: 3.1 }))).toBe(Math.round(3.1 * FPS));
+    expect(voBeatStartFrames(beat({ startSec: 3.1 }))).toBe(Math.round(3.1 * FPS));
   });
 
   it("never returns a negative frame count", () => {
-    expect(voOffsetFrames(scene({ voOffsetSec: -5 }))).toBe(0);
+    expect(voBeatStartFrames(beat({ startSec: -5 }))).toBe(0);
+  });
+});
+
+describe("voEndSec", () => {
+  it("is 0 for a scene with no voiceover", () => {
+    expect(voEndSec(scene({ vo: [] }))).toBe(0);
+  });
+
+  it("is the latest start+duration across beats", () => {
+    const s = scene({
+      vo: [beat({ startSec: 0, durationSec: 3 }), beat({ startSec: 8, durationSec: 4 })],
+    });
+    expect(voEndSec(s)).toBeCloseTo(12);
+  });
+
+  it("does not let a negative start pull the end before its duration", () => {
+    expect(voEndSec(scene({ vo: [beat({ startSec: -2, durationSec: 3 })] }))).toBeCloseTo(3);
   });
 });
 
 describe("sceneFrames", () => {
   it("uses the clip length when there is no voiceover", () => {
-    expect(sceneFrames(scene({ clipDurationSec: 12, voDurationSec: undefined }))).toBe(
-      frames(12),
-    );
+    expect(sceneFrames(scene({ clipDurationSec: 12, vo: [] }))).toBe(frames(12));
   });
 
-  it("does NOT truncate a clip that is longer than the voiceover", () => {
-    // Regression: a 14.3s clip with an 11.2s VO must span the full clip.
-    const s = scene({ clipDurationSec: 14.33, voDurationSec: 11.23 });
+  it("does NOT truncate a clip that ends after every spoken line", () => {
+    // 14.3s clip; last line ends at 3.1 + 8 = 11.1 < clip → clip wins.
+    const s = scene({
+      clipDurationSec: 14.33,
+      vo: [beat({ startSec: 3.1, durationSec: 8 })],
+    });
     expect(sceneFrames(s)).toBe(frames(14.33));
   });
 
-  it("uses the voiceover length when it is longer than the clip", () => {
-    const s = scene({ clipDurationSec: 8, voDurationSec: 11.23 });
-    expect(sceneFrames(s)).toBe(frames(11.23));
-  });
-
-  it("extends to fit a delayed voiceover that runs past the clip", () => {
-    const s = scene({ clipDurationSec: 12, voDurationSec: 11.23, voOffsetSec: 4 });
-    // offset + vo = 15.23 > clip 12 → base 15.23
+  it("extends to fit a line that runs past the clip", () => {
+    // line ends at 4 + 11.23 = 15.23 > clip 12 → vo end wins.
+    const s = scene({
+      clipDurationSec: 12,
+      vo: [beat({ startSec: 4, durationSec: 11.23 })],
+    });
     expect(sceneFrames(s)).toBe(frames(15.23));
   });
 
-  it("keeps the full clip when the delayed voiceover still ends within it", () => {
-    // Right-aligned: offset == clip - vo, so VO ends exactly with the clip.
-    const s = scene({ clipDurationSec: 14.33, voDurationSec: 11.23, voOffsetSec: 3.1 });
-    expect(sceneFrames(s)).toBe(frames(14.33));
-  });
-
   it("returns at least one frame", () => {
-    expect(sceneFrames(scene({ clipDurationSec: 0.0001, voDurationSec: undefined }))).toBeGreaterThanOrEqual(1);
+    expect(sceneFrames(scene({ clipDurationSec: 0.0001, vo: [] }))).toBeGreaterThanOrEqual(1);
   });
 });
 
 describe("totalFrames", () => {
   it("sums scene lengths for a single scene", () => {
-    const s = scene({ clipDurationSec: 14.33, voDurationSec: 11.23, voOffsetSec: 3.1 });
+    const s = scene({ clipDurationSec: 14.33, vo: [beat({ startSec: 3.1, durationSec: 8 })] });
     expect(totalFrames([s])).toBe(sceneFrames(s));
   });
 
   it("subtracts the overlapping transition between scenes", () => {
-    const a = scene({ id: "a", clipDurationSec: 10, voDurationSec: undefined });
-    const b = scene({ id: "b", clipDurationSec: 10, voDurationSec: undefined });
+    const a = scene({ id: "a", clipDurationSec: 10, vo: [] });
+    const b = scene({ id: "b", clipDurationSec: 10, vo: [] });
     expect(totalFrames([a, b])).toBe(sceneFrames(a) + sceneFrames(b) - TRANSITION_FRAMES);
   });
 });

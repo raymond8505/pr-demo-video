@@ -9,19 +9,22 @@ import {
   HIGHLIGHT_TYPES,
   type Manifest,
   type ManifestHighlight,
+  type Beat,
 } from "../manifest.js";
 import { getProvider } from "../llm/provider.js";
 
 const DEFAULT_MAX_HIGHLIGHTS = 2;
 const DIFF_CHAR_CAP = 80_000;
-/** Target spoken length per narration (~150 wpm). */
-const TARGET_SECONDS = 11;
-const TARGET_WORDS = Math.round((TARGET_SECONDS / 60) * 150);
+/** Target spoken length per beat line (~150 wpm) — one crisp sentence. */
+const TARGET_BEAT_SECONDS = 3.5;
+const TARGET_BEAT_WORDS = Math.round((TARGET_BEAT_SECONDS / 60) * 150);
 
 /**
  * Stage 1 (faithful extractor): neutral, accurate, user-facing highlights. No
  * character — this is the anti-hallucination layer and the source of demoIntent.
- * We derive the kebab `id` ourselves, so the model doesn't return one.
+ * `beats` is the ordered step-plan (each a single on-screen action) that drives
+ * both the narration and the demo spec. We derive the kebab `id` and beat keys
+ * ourselves, so the model returns neither.
  */
 const ExtractSchema = z.object({
   highlights: z.array(
@@ -30,14 +33,18 @@ const ExtractSchema = z.object({
       title: z.string(),
       plainSummary: z.string(),
       demoIntent: z.string(),
+      beats: z.array(z.object({ action: z.string() })).min(1),
     }),
   ),
 });
 
-/** Stage 2 (narrator): narration only, rewritten from one plainSummary. */
-const NarrationSchema = z.object({ narration: z.string() });
+/** Stage 2 (narrator): one spoken line per beat, in order. */
+const NarrationSchema = z.object({
+  beats: z.array(z.object({ narration: z.string() })).min(1),
+});
 
-/** What story.json holds and what --from-story re-seeds from. */
+/** What story.json holds and what --from-story re-seeds from. Beat `key` is
+ * written for the human's reference but re-derived by position on re-seed. */
 const StoryFileSchema = z.object({
   highlights: z.array(
     z.object({
@@ -45,7 +52,15 @@ const StoryFileSchema = z.object({
       title: z.string(),
       plainSummary: z.string(),
       demoIntent: z.string(),
-      narration: z.string(),
+      beats: z
+        .array(
+          z.object({
+            key: z.string().optional(),
+            action: z.string(),
+            narration: z.string(),
+          }),
+        )
+        .min(1),
     }),
   ),
 });
@@ -104,18 +119,32 @@ export async function run(ref: PrRef, opts: Record<string, unknown>): Promise<vo
   });
   const factual = extracted.highlights.slice(0, maxHighlights);
 
-  // Stage 2: narrator persona, one call per highlight (keeps the voice tight).
-  console.error(`Stage 2: writing narration for ${factual.length} highlight(s)...`);
+  // Stage 2: narrator persona, one call per highlight (keeps the voice tight),
+  // writing one spoken line per on-screen beat so the words track the action.
+  console.error(`Stage 2: writing per-beat narration for ${factual.length} highlight(s)...`);
   const highlights: StoryHighlight[] = [];
   for (const h of factual) {
-    const { narration } = await provider.complete({
+    const keyed = h.beats.map((b, i) => ({ key: `b${i + 1}`, action: b.action }));
+    const { beats: lines } = await provider.complete({
       system: NARRATOR_SYSTEM,
-      messages: [{ role: "user", content: narratorPrompt(h.title, h.plainSummary) }],
+      messages: [{ role: "user", content: narratorPrompt(h.title, h.plainSummary, keyed) }],
       schema: NarrationSchema,
       schemaName: "narration",
-      maxTokens: 1000,
+      maxTokens: 1500,
     });
-    highlights.push({ ...h, narration });
+    if (lines.length !== keyed.length) {
+      console.error(
+        `  (warning: ${h.title} — model returned ${lines.length} lines for ${keyed.length} beats; ` +
+          `zipping by order, falling back to the step text where missing)`,
+      );
+    }
+    // Zip lines onto beats by order; never leave a beat without a (non-empty)
+    // line — the manifest requires it and the human fixes wording at the gate.
+    const beats = keyed.map((b, i) => ({
+      ...b,
+      narration: lines[i]?.narration?.trim() || b.action,
+    }));
+    highlights.push({ ...h, beats });
   }
 
   await fs.writeFile(p.storyJson, JSON.stringify({ highlights }, null, 2) + "\n", "utf8");
@@ -125,7 +154,10 @@ export async function run(ref: PrRef, opts: Record<string, unknown>): Promise<vo
   for (const h of highlights) {
     console.error(`  [${h.type}] ${h.title}`);
     console.error(`    fact: ${h.plainSummary}`);
-    console.error(`    narration: ${h.narration}`);
+    h.beats.forEach((b, i) => {
+      console.error(`    ${i + 1}. (${b.action})`);
+      console.error(`       "${b.narration}"`);
+    });
   }
   console.error(
     `\nGATE: review/edit ${p.storyJson} (check facts AND the narrator voice), then re-seed the manifest with:\n  pr-video script ${ref.repo}#${ref.prNumber} --from-story`,
@@ -140,6 +172,7 @@ For each highlight return:
 - title: a short, plain, customer-friendly headline (no jargon)
 - plainSummary: 1-2 neutral, factual sentences describing exactly what changed for the user. No flourish. This must be accurate to the diff.
 - demoIntent: the concrete UI flow that proves this change on screen — which page, what to click/type, what the viewer should see. Specific enough to script a browser test.
+- beats: the demoIntent broken into an ORDERED list of discrete on-screen steps (3 to 6). Each beat is ONE action a viewer watches happen — "open the recipe", "enter cooking mode", "start the timer", "the redesigned card appears". A separate spoken line will narrate each beat as it happens, so each beat must be a single, distinct, visible moment in the flow (not two actions at once, not an invisible internal change). Order them exactly as they occur on screen.
 
 Be faithful to the diff. Do not invent capabilities. Prefer fewer, stronger highlights.`;
 
@@ -180,23 +213,41 @@ Voice and manner:
 - Friendly and direct, like a great demo host. Modern and conversational, but professional — no slang overload, no hype-y buzzwords or marketing fluff.
 - A brisk, lively cadence that reads aloud naturally.
 
+You receive an ordered list of ON-SCREEN STEPS for ONE feature — each step is one action the viewer watches happen. Write ONE short spoken line per step, describing what is happening AS IT HAPPENS, so the spoken words track the action on screen.
+
 Iron rules:
-- Tell the TRUTH about what the feature does. Make it engaging, never inaccurate. If you are unsure of a detail, say it plain rather than invent.
+- Exactly one line per step, in the SAME order. Return as many lines as there are steps — no more, no fewer.
+- Each line is ONE crisp sentence, about ${TARGET_BEAT_SECONDS} seconds spoken (roughly ${TARGET_BEAT_WORDS} words). Short is good.
+- The lines must read as a single, smoothly flowing narration when played back to back — vary openings, don't restate the same idea each line.
+- Tell the TRUTH about what each step does. Make it engaging, never inaccurate. If unsure of a detail, say it plain rather than invent.
 - No code, no file names, no version numbers, no emoji, no markup, no special characters — every word here is spoken aloud.
-- 2 to 3 sentences. Aim for about ${TARGET_SECONDS} seconds spoken (about ${TARGET_WORDS} words).
 - Present tense; speak to the viewer directly.
 
 Example —
-Plain feature: "You can now search recipes by typing in the search bar; results filter as you type."
-Max: "Here's something you'll love — finding a recipe is now instant. Just start typing in the search bar and the list filters as you go, so your next meal is only a few keystrokes away."
+Steps:
+  1. Open the recipe list
+  2. Type "soup" into the search bar
+  3. The list filters to matching recipes
+Max:
+  1. "Let's find something to cook tonight."
+  2. "Just start typing in the search bar..."
+  3. "...and the list filters instantly to match."
 
-You receive a plain description of ONE user-facing change. Return narration in your voice that a customer would both enjoy and clearly understand.`;
+Return one narration line per step, in order.`;
 
-function narratorPrompt(title: string, plainSummary: string): string {
+function narratorPrompt(
+  title: string,
+  plainSummary: string,
+  beats: { key: string; action: string }[],
+): string {
+  const steps = beats.map((b, i) => `  ${i + 1}. ${b.action}`).join("\n");
   return `Feature: ${title}
 Plain description: ${plainSummary}
 
-Write the narration for this one change.`;
+On-screen steps, in order (write one spoken line per step, same order):
+${steps}
+
+Return one narration line per step.`;
 }
 
 // --- manifest seeding ---------------------------------------------------------
@@ -212,12 +263,19 @@ async function seedManifest(
     let n = 2;
     while (usedIds.has(id)) id = `${slugify(h.title)}-${n++}`;
     usedIds.add(id);
+    // Re-derive beat keys by position so they stay sequential even if the human
+    // reordered/added beats in story.json — the spec marks beats in this order.
+    const beats: Beat[] = h.beats.map((b, i) => ({
+      key: `b${i + 1}`,
+      action: b.action,
+      narration: b.narration,
+    }));
     return {
       id,
       type: h.type,
       title: h.title,
       plainSummary: h.plainSummary,
-      narration: h.narration,
+      beats,
       demoIntent: h.demoIntent,
       status: "pending" as const,
     };

@@ -1,6 +1,6 @@
 import { AbsoluteFill, OffthreadVideo, Audio, Sequence, staticFile } from "remotion";
 import type { SceneInput } from "./types.js";
-import { voOffsetFrames } from "./types.js";
+import { voBeatStartFrames } from "./types.js";
 
 const TYPE_LABEL: Record<SceneInput["type"], string> = {
   feature: "NEW",
@@ -15,22 +15,22 @@ const TYPE_COLOR: Record<SceneInput["type"], string> = {
 };
 
 /**
- * One highlight: the demo clip fills the frame; the voiceover plays over it
- * (optionally delayed by voOffsetSec so it lands on the payoff, not the
- * navigation preamble); a lower-third caption shows the title + change type. The
+ * One highlight: the demo clip fills the frame; each spoken beat line plays over
+ * it at the moment its on-screen action happens (placed by the render stage from
+ * captured markers); a lower-third caption shows the title + change type. The
  * enclosing Sequence (in DemoVideo) sets the scene length from sceneFrames(),
- * which spans both the full clip and the delayed voice — so the clip is never
- * truncated and a voice that runs long freezes on the clip's last frame.
+ * which spans both the full clip and the last spoken line — so the clip is never
+ * truncated and a line that runs long freezes on the clip's last frame.
  */
 export const Scene: React.FC<{ scene: SceneInput }> = ({ scene }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: "#0b0b0f" }}>
       <OffthreadVideo src={staticFile(scene.clipSrc)} muted />
-      {scene.voSrc ? (
-        <Sequence from={voOffsetFrames(scene)}>
-          <Audio src={staticFile(scene.voSrc)} />
+      {scene.vo.map((beat) => (
+        <Sequence key={beat.src} from={voBeatStartFrames(beat)}>
+          <Audio src={staticFile(beat.src)} />
         </Sequence>
-      ) : null}
+      ))}
 
       <AbsoluteFill
         style={{

@@ -85,6 +85,30 @@ export function runPaths(runDir: string): RunPaths {
   };
 }
 
+/** Per-highlight voiceover directory: <run>/audio/<id>/ (one mp3 per beat). */
+export function beatAudioDir(runDir: string, highlightId: string): string {
+  return path.join(runPaths(runDir).audio, highlightId);
+}
+
+/** A beat's mp3 on disk: <run>/audio/<id>/<key>.mp3. */
+export function beatAudioFile(
+  runDir: string,
+  highlightId: string,
+  beatKey: string,
+): string {
+  return path.join(beatAudioDir(runDir, highlightId), `${beatKey}.mp3`);
+}
+
+/** A beat's mp3 RELATIVE to the run dir (Remotion publicDir): audio/<id>/<key>.mp3. */
+export function beatAudioRel(highlightId: string, beatKey: string): string {
+  return `audio/${highlightId}/${beatKey}.mp3`;
+}
+
+/** Captured beat-marker timings for a clip: <run>/clips/<id>.beats.json. */
+export function beatMarkersFile(runDir: string, highlightId: string): string {
+  return path.join(runPaths(runDir).clips, `${highlightId}.beats.json`);
+}
+
 export async function ensureRunDirs(runDir: string): Promise<RunPaths> {
   const p = runPaths(runDir);
   await Promise.all([

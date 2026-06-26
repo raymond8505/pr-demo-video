@@ -54,13 +54,19 @@ yarn pr-video init <pr> --preview-url <url>
 yarn pr-video script <pr>          # Stage 1 extracts facts; Stage 2 writes Max's narration
 ```
 
-Then open `runs/<...>/story.json`. For each highlight:
+Then open `runs/<...>/story.json`. Each highlight now has an ordered `beats` array —
+each beat is one on-screen action (`action`) with its own spoken line (`narration`) that
+plays the moment that action happens. For each highlight:
 - **Check the facts** (`plainSummary`) against the actual PR — fetch the diff if unsure;
   the extractor can over- or under-claim.
-- **Refine the narration** (`narration`) in Max's voice: upbeat product evangelist,
-  ~2–3 sentences, ~28 words (≈11s spoken), present tense, no code/filenames/emoji.
-  Edit `story.json` directly based on the user's feedback. This is the main collaboration
-  point — surface each narration line and iterate until the user is happy.
+- **Check the beats** map to distinct, visible steps in the right order — each should be a
+  single moment a viewer watches (not two actions at once, not an invisible change).
+- **Refine each beat's `narration`** in Max's voice: upbeat product evangelist, ONE crisp
+  sentence per beat (~3–4s, ~9 words), present tense, no code/filenames/emoji; the lines
+  should flow as one narration when read top to bottom. Edit `story.json` directly based on
+  the user's feedback. This is the main collaboration point — surface each beat's
+  action↔line pairing and iterate until the user is happy. (Leave `key` alone — it's
+  re-derived by position on re-seed.)
 
 Re-seed the manifest from your edits (no LLM call):
 
@@ -95,7 +101,11 @@ Read `manifest.json`. Any highlight with `status: "unresolved"` failed the auto-
    `getByText`, `getByPlaceholder`, `getByLabel`), preferring `.first()` to avoid
    strict-mode violations. Keep `await expect(...).toBeVisible()` + `await
    page.waitForTimeout(800)` after each transition so the recording reads well. Keep the
-   filename `<id>.spec.ts`.
+   filename `<id>.spec.ts`. **Keep the beat markers**: one
+   `console.log("@@PRVIDEO_BEAT <key>")` immediately before each beat's visible action,
+   one per beat in `manifest.json` order — they're how each spoken line gets synced to its
+   action (the `record` stage captures their timings to `clips/<id>.beats.json`). If you
+   add/remove a step, add/remove its marker too so the marker count matches the beat count.
 4. Iterate fast against the live app (video off, no slow-mo). On Windows PowerShell:
 
    ```powershell
@@ -125,12 +135,19 @@ Confirm in `manifest.json` that every highlight you intend to ship reached
 ### 5. Voice + render
 
 ```
-yarn pr-video voice <pr>           # ElevenLabs TTS per narration (Max / "Will")
+yarn pr-video voice <pr>           # ElevenLabs TTS per BEAT (Max / "Will") → audio/<id>/<key>.mp3
 yarn pr-video render <pr>          # Remotion → runs/<...>/out.mp4
 ```
 
 `voice` throws **"No highlights to voice"** if nothing was recorded — that means author +
 your debugging produced zero usable specs; go back to step 3, don't paper over it.
+
+**Per-beat sync nudge (render gate).** Render places each spoken line at its captured
+marker (`manifest.beats[].markerSec`). If a line lands a touch early/late, set that beat's
+`voOffsetSec` (seconds, may be negative) in `manifest.json` and re-render — it nudges only
+that line. If a clip's `clips/<id>.beats.json` is missing or its marker count ≠ beat count
+(watch for the `record` warning), that highlight's lines play **sequentially** instead of
+on their markers — re-check the spec's markers if sync matters.
 
 Finish by pointing the user at `runs/<...>/out.mp4` and offering to play it.
 
@@ -141,11 +158,11 @@ Finish by pointing the user at `runs/<...>/out.mp4` and offering to play it.
 | init | `init <pr> --preview-url <url>` | — | manifest (previewUrl) |
 | script | `script <pr>` / `script <pr> --from-story` | PR / edited story.json | story.json, seeded highlights |
 | probe | `probe <pr>` | previewUrl | ARIA snapshot (stdout) |
-| author | `author <pr>` | highlights, live app | specs/*.spec.ts, status authored/unresolved |
-| record | `record <pr>` | specs | clips/*.webm, status recorded |
+| author | `author <pr>` | beats, live app | specs/*.spec.ts (with beat markers), status authored/unresolved |
+| record | `record <pr>` | specs | clips/*.webm + clips/*.beats.json (marker timings → manifest), status recorded |
 | normalize | `normalize <pr>` | clips | clips/*.mp4, durations |
-| voice | `voice <pr>` | narration | audio/*.mp3, status voiced |
-| render | `render <pr>` | clips + audio | out.mp4 |
+| voice | `voice <pr>` | beats | audio/<id>/<key>.mp3 per beat, status voiced |
+| render | `render <pr>` | clips + beat audio + markers | out.mp4 |
 
 Key source: [src/cli.ts](../../../src/cli.ts),
 [src/pipeline/](../../../src/pipeline/), [playwright.config.ts](../../../playwright.config.ts),

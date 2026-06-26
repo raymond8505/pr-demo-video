@@ -7,6 +7,18 @@
  * Media paths are RELATIVE to the run dir, which the render stage passes as
  * Remotion's publicDir; the components resolve them with staticFile().
  */
+/**
+ * One spoken line within a scene, already placed in time. `startSec` is where
+ * the line begins relative to the scene start — computed by the render stage
+ * from the beat's captured marker (plus any nudge), or a sequential fallback.
+ */
+export type VoBeat = {
+  /** relative path under the run dir, e.g. "audio/<id>/<key>.mp3" */
+  src: string;
+  startSec: number;
+  durationSec: number;
+};
+
 export type SceneInput = {
   id: string;
   type: "feature" | "change" | "fix";
@@ -15,14 +27,8 @@ export type SceneInput = {
   /** relative path under the run dir, e.g. "clips/<id>.mp4" */
   clipSrc: string;
   clipDurationSec: number;
-  /** relative path under the run dir, e.g. "audio/<id>.mp3" (optional pre-VO) */
-  voSrc?: string;
-  voDurationSec?: number;
-  /**
-   * Seconds to delay the voiceover after the scene starts, so narration lands on
-   * the on-screen payoff instead of the navigation preamble. Defaults to 0 (VO
-   * starts with the clip). Set per-highlight at the render gate. */
-  voOffsetSec?: number;
+  /** Per-beat voiceover lines, each pre-placed at its on-screen action. */
+  vo: VoBeat[];
 };
 
 export type DemoVideoProps = {
@@ -38,26 +44,27 @@ export const TRANSITION_FRAMES = 15;
 /** Breathing room added to each scene beyond its voice/clip length (seconds). */
 export const SCENE_PAD_SEC = 0.6;
 
-/**
- * Frames to delay the voiceover within its scene (>= 0). The VO is offset so its
- * content lands on the on-screen payoff rather than the navigation preamble.
- */
-export function voOffsetFrames(scene: SceneInput): number {
-  return Math.max(0, Math.round((scene.voOffsetSec ?? 0) * FPS));
+/** Frames at which a placed beat line starts within its scene (>= 0). */
+export function voBeatStartFrames(beat: VoBeat): number {
+  return Math.max(0, Math.round(beat.startSec * FPS));
+}
+
+/** When the last spoken line in a scene ends (seconds), or 0 if there are none. */
+export function voEndSec(scene: SceneInput): number {
+  return scene.vo.reduce(
+    (end, b) => Math.max(end, Math.max(0, b.startSec) + b.durationSec),
+    0,
+  );
 }
 
 /**
  * Source-of-truth timing: the scene is long enough to play the whole clip AND
- * the (possibly delayed) voiceover. Whichever ends later sets the length, so a
- * clip longer than the voice is never truncated and a voice that runs past the
- * clip freezes on its last frame. Returns whole frames (>= 1) for one scene.
+ * every (placed) spoken line. Whichever ends later sets the length, so a clip
+ * longer than the voice is never truncated and a line that runs past the clip
+ * freezes on its last frame. Returns whole frames (>= 1) for one scene.
  */
 export function sceneFrames(scene: SceneInput): number {
-  const voEnd =
-    scene.voDurationSec != null
-      ? (scene.voOffsetSec ?? 0) + scene.voDurationSec
-      : 0;
-  const base = Math.max(scene.clipDurationSec, voEnd);
+  const base = Math.max(scene.clipDurationSec, voEndSec(scene));
   return Math.max(1, Math.ceil((base + SCENE_PAD_SEC) * FPS));
 }
 
