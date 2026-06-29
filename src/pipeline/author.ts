@@ -146,8 +146,10 @@ Hard requirements for the spec you emit (in \`specCode\`):
 - Make the cursor visible by acting through \`glide\` instead of raw locator methods, so the pointer animates to each target and a click ripple shows on screen:
   - Click: \`await glide.click(page, page.getByRole("button", { name: "Save" }));\`
   - Type: \`await glide.fill(page, page.getByPlaceholder("Search"), "soup");\`
-  - Hover: \`await glide.hover(page, page.getByText("Menu"));\`
-  Use \`page.goto\`, \`expect\`, \`waitForTimeout\` etc. as normal. Only the interactions (click/fill/hover) go through \`glide\`, and always pass \`page\` as the first argument.
+  - Point (move the cursor to call something out, WITHOUT clicking it): \`await glide.point(page, page.getByRole("button", { name: "Delete" }));\`
+  - Hover (when you specifically need a real hover, e.g. to reveal a menu/tooltip): \`await glide.hover(page, page.getByText("Menu"));\`
+  Use \`page.goto\`, \`expect\`, \`waitForTimeout\` etc. as normal. Every interaction goes through \`glide\`, always with \`page\` as the first argument.
+- The cursor is a NARRATION POINTER, not just a click indicator. For each beat, as its spoken line plays, move the cursor to EVERY UI element that line calls out — in the order the line mentions them — using \`glide.point(...)\`, even for elements you never click. If a line names several things ("reset on the left, edit and delete on the right"), point at each in turn with a short \`await page.waitForTimeout(700)\` between them so the viewer's eye can follow. Reserve \`glide.click\` for the ONE element the beat actually activates; use \`glide.point\` for everything else the narration references. A beat whose narration only describes things (no activation) should still visit each referenced element with \`glide.point\`.
 - Navigate with the configured baseURL: \`await page.goto("/")\` (and relative paths). Never hardcode a host.
 - The app has NO data-testids. Use accessible selectors only: getByRole, getByText, getByPlaceholder, getByLabel — chosen from the ARIA snapshot you are given.
 - Perform the beats IN ORDER. Immediately BEFORE the visible action of each beat, emit its marker on its own line: \`console.log("@@PRVIDEO_BEAT <key>");\` using the beat's key. Emit exactly one marker per beat, in order — these are the ONLY console.log calls allowed.

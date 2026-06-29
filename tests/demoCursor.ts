@@ -129,6 +129,17 @@ export const glide = {
     await glideTo(page, locator);
     await locator.hover();
   },
+
+  /**
+   * Move the cursor to an element WITHOUT interacting with it — to draw the
+   * viewer's eye to something the narration is calling out (a button, a value, a
+   * card, an icon) even when it is never clicked. Pure attention-direction: no
+   * click, no ripple, and (unlike hover) no actionability wait beyond the element
+   * being measurable.
+   */
+  async point(page: Page, locator: Locator): Promise<void> {
+    await glideTo(page, locator);
+  },
 };
 
 /**
