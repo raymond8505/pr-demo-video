@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { PrRef } from "../paths.js";
-import { runDirFor, runPaths, beatMarkersFile, PROJECT_ROOT } from "../paths.js";
+import { runDirFor, ensureRunDirs, beatMarkersFile, PROJECT_ROOT } from "../paths.js";
 import {
   readManifest,
   updateHighlight,
@@ -41,7 +41,10 @@ export function mergeBeatMarkers(
  */
 export async function run_(ref: PrRef, _opts: Record<string, unknown>): Promise<void> {
   const runDir = runDirFor(ref);
-  const p = runPaths(runDir);
+  // ensureRunDirs (not just runPaths) so the cursor/glide fixture is copied in
+  // fresh as specs/_demo.ts before we record — specs import it, and record is
+  // when it actually matters (it's baked into the recorded clip).
+  const p = await ensureRunDirs(runDir);
   const manifest = await readManifest(runDir);
 
   if (!manifest.previewUrl) {

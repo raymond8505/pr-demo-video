@@ -142,7 +142,12 @@ const SYSTEM = `You author a single Playwright test that visually demonstrates o
 The demo is broken into ordered BEATS — each beat is one on-screen action with its own spoken line that plays the moment that action happens. Your spec performs the beats in order and emits a marker at the start of each so the voiceover can be synced to it.
 
 Hard requirements for the spec you emit (in \`specCode\`):
-- Vanilla Playwright: \`import { test, expect } from "@playwright/test";\`. Exactly ONE \`test(...)\` per file.
+- Import the demo helpers, NOT @playwright/test directly: \`import { test, expect, glide } from "./_demo";\`. Exactly ONE \`test(...)\` per file.
+- Make the cursor visible by acting through \`glide\` instead of raw locator methods, so the pointer animates to each target and a click ripple shows on screen:
+  - Click: \`await glide.click(page, page.getByRole("button", { name: "Save" }));\`
+  - Type: \`await glide.fill(page, page.getByPlaceholder("Search"), "soup");\`
+  - Hover: \`await glide.hover(page, page.getByText("Menu"));\`
+  Use \`page.goto\`, \`expect\`, \`waitForTimeout\` etc. as normal. Only the interactions (click/fill/hover) go through \`glide\`, and always pass \`page\` as the first argument.
 - Navigate with the configured baseURL: \`await page.goto("/")\` (and relative paths). Never hardcode a host.
 - The app has NO data-testids. Use accessible selectors only: getByRole, getByText, getByPlaceholder, getByLabel — chosen from the ARIA snapshot you are given.
 - Perform the beats IN ORDER. Immediately BEFORE the visible action of each beat, emit its marker on its own line: \`console.log("@@PRVIDEO_BEAT <key>");\` using the beat's key. Emit exactly one marker per beat, in order — these are the ONLY console.log calls allowed.

@@ -6,6 +6,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 /** Repo root (one level up from src/). */
 export const PROJECT_ROOT = path.resolve(here, "..");
 export const RUNS_ROOT = path.join(PROJECT_ROOT, "runs");
+/**
+ * The cursor/glide fixture module. Copied into each run's specs dir as `_demo.ts`
+ * by ensureRunDirs so authored specs can `import { test, expect, glide } from
+ * "./_demo"` — see tests/demoCursor.ts.
+ */
+export const CURSOR_TEMPLATE = path.join(PROJECT_ROOT, "tests", "demoCursor.ts");
 
 export interface PrRef {
   owner: string;
@@ -116,5 +122,8 @@ export async function ensureRunDirs(runDir: string): Promise<RunPaths> {
     fs.mkdir(p.clips, { recursive: true }),
     fs.mkdir(p.audio, { recursive: true }),
   ]);
+  // Make the cursor/glide fixture importable from authored specs as "./_demo".
+  // Copy (not rename) — fs.rename throws EPERM on OneDrive-synced paths.
+  await fs.copyFile(CURSOR_TEMPLATE, path.join(p.specs, "_demo.ts"));
   return p;
 }
