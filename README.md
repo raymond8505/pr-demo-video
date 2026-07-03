@@ -17,9 +17,12 @@ a deployed **preview URL**.
 
 ## Example
 
-I recently redesigned the timer UI for my recipe viewer app. The below PR URL and 
+I recently redesigned the timer UI for my recipe viewer app. The below PR URL and preview URL were the only required inputs to produce the video. The agent figured out what the changes were and how to navigate through the app to get into a state where it could demo the changes.
+
 [PR URL](https://github.com/raymond8505/recipe-viewer/pull/2)
+
 [Preview URL](https://new.raymonds.recipes/)
+
 [Video](https://www.youtube.com/watch?v=HxkYaQqAVuk)
 
 ## Setup
