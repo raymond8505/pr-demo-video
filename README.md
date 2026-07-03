@@ -13,8 +13,14 @@ PR + preview URL
 ```
 
 The core tool is **repo-agnostic**: its initial input is just a PR reference and
-a deployed **preview URL**. Deriving that URL automatically for a given repo is an
-optional, pluggable resolver (recipe-viewer ships as one).
+a deployed **preview URL**.
+
+## Example
+
+I recently redesigned the timer UI for my recipe viewer app. The below PR URL and 
+[PR URL](https://github.com/raymond8505/recipe-viewer/pull/2)
+[Preview URL](https://new.raymonds.recipes/)
+[Video](https://www.youtube.com/watch?v=HxkYaQqAVuk)
 
 ## Setup
 
